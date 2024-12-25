@@ -38,30 +38,27 @@ func main() {
 		Chain:   ch2,
 	}
 
-	inboxLogs, _ := inbox.FetchLogs(big.NewInt(0))
-	messengerLogs, _ := messenger.FetchLogs(big.NewInt(0))
+	errChan := make(chan error)
 
-	log.Println("Inbox: ")
-	for _, l := range inboxLogs {
-		name, data, err := inbox.ParseEventToDic(l)
+	inboxChan := inbox.CreateFetchChannel(big.NewInt(0), errChan)
+	must(err)
 
-		if err != nil {
-			log.Println(err)
-			continue
+	messengerChan := messenger.CreateFetchChannel(big.NewInt(0), errChan)
+	must(err)
+
+	for {
+		select {
+		case inboxLog := <-inboxChan:
+			name, data, err := inbox.ParseEventToDic(inboxLog)
+			must(err)
+
+			log.Printf("inbox: %s %v", name, data)
+		case messengerLog := <-messengerChan:
+			name, data, err := messenger.ParseEventToDic(messengerLog)
+			must(err)
+
+			log.Printf("messenger: %s %v", name, data)
 		}
-
-		log.Printf("Inbox#%s: %+v", name, data)
 	}
 
-	log.Println("Messenger: ")
-	for _, l := range messengerLogs {
-		name, data, err := messenger.ParseEventToDic(l)
-
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		log.Printf("Messenger#%s: %+v", name, data)
-	}
 }
