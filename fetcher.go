@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// will be exposed via config later on
 var FETCH_SLEEP_TIME = 5
 
 var l2ToL2CrossDomainMessengerMetaData = &bind.MetaData{
