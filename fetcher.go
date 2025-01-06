@@ -38,6 +38,11 @@ type Identifier struct {
 	ChainId     *big.Int
 }
 
+type ContractPair struct {
+	Sender   *Chain
+	Receiver *Chain
+}
+
 func FetcherInit() (err error) {
 	CrossL2InboxABI, err = crossL2InboxMetaData.GetAbi()
 
@@ -188,18 +193,58 @@ func GetEventIdentifier(eventLog types.Log, chain *Chain) (id Identifier, err er
 	return
 }
 
-func (a Aggregator) GetContracts() (inbox Contract, messenger Contract) {
+func (cp ContractPair) GetContracts() (inbox Contract, messenger Contract) {
 	inbox = Contract{
 		ABI:     CrossL2InboxABI,
 		Address: common.HexToAddress("0x4200000000000000000000000000000000000022"),
-		Chain:   &a.Receiver,
+		Chain:   cp.Receiver,
 	}
 
 	messenger = Contract{
 		ABI:     L2ToL2CrossDomainMessengerABI,
 		Address: common.HexToAddress("0x4200000000000000000000000000000000000023"),
-		Chain:   &a.Sender,
+		Chain:   cp.Sender,
 	}
+
+	return
+}
+
+func (cp ContractPair) FetchAggregateCycle() (agg Aggregator, errChan chan error, err error) {
+	agg = MakeAggregator(cp.Sender, cp.Receiver)
+
+	errChan = make(chan error)
+
+	inbox, messenger := agg.inboxContract, agg.messengerContract
+
+	inboxChan := inbox.CreateFetchChannel(big.NewInt(0), errChan)
+	if err != nil {
+		return agg, nil, err
+	}
+
+	messengerChan := messenger.CreateFetchChannel(big.NewInt(0), errChan)
+	if err != nil {
+		return agg, nil, err
+	}
+
+	// We read from both channels and log the events
+	go func() {
+		for {
+			select {
+			case inboxLog := <-inboxChan:
+				err := agg.AddInboxMessage(&inboxLog)
+				if err != nil {
+					errChan <- err
+				}
+			case messengerLog := <-messengerChan:
+				err := agg.AddMessengerMessage(&messengerLog)
+				if err != nil {
+					errChan <- err
+				}
+
+			}
+		}
+
+	}()
 
 	return
 }
