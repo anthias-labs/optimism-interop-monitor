@@ -7,7 +7,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -16,17 +15,12 @@ import (
 // will be exposed via config later on
 var FETCH_SLEEP_TIME = 5
 
-var l2ToL2CrossDomainMessengerMetaData = &bind.MetaData{
-	ABI: "[{\"type\":\"function\",\"name\":\"crossDomainMessageContext\",\"inputs\":[],\"outputs\":[{\"name\":\"sender_\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"source_\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"crossDomainMessageSender\",\"inputs\":[],\"outputs\":[{\"name\":\"sender_\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"crossDomainMessageSource\",\"inputs\":[],\"outputs\":[{\"name\":\"source_\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"messageNonce\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"messageVersion\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint16\",\"internalType\":\"uint16\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"relayMessage\",\"inputs\":[{\"name\":\"_id\",\"type\":\"tuple\",\"internalType\":\"structIdentifier\",\"components\":[{\"name\":\"origin\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"blockNumber\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"logIndex\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"timestamp\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"chainId\",\"type\":\"uint256\",\"internalType\":\"uint256\"}]},{\"name\":\"_sentMessage\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"outputs\":[],\"stateMutability\":\"payable\"},{\"type\":\"function\",\"name\":\"sendMessage\",\"inputs\":[{\"name\":\"_destination\",\"type\":\"uint256\",\"internalType\":\"uint256\"},{\"name\":\"_target\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_message\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"successfulMessages\",\"inputs\":[{\"name\":\"\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"version\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"RelayedMessage\",\"inputs\":[{\"name\":\"source\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"messageNonce\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"messageHash\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"SentMessage\",\"inputs\":[{\"name\":\"destination\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"target\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"messageNonce\",\"type\":\"uint256\",\"indexed\":true,\"internalType\":\"uint256\"},{\"name\":\"sender\",\"type\":\"address\",\"indexed\":false,\"internalType\":\"address\"},{\"name\":\"message\",\"type\":\"bytes\",\"indexed\":false,\"internalType\":\"bytes\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"EventPayloadNotSentMessage\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"IdOriginNotL2ToL2CrossDomainMessenger\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidChainId\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"MessageAlreadyRelayed\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"MessageDestinationNotRelayChain\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"MessageDestinationSameChain\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"MessageTargetCrossL2Inbox\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"MessageTargetL2ToL2CrossDomainMessenger\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotEntered\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ReentrantCall\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"TargetCallFailed\",\"inputs\":[]}]",
-}
-
-var L2ToL2CrossDomainMessengerABI *abi.ABI
-
 // Represents either the sender chain, or any chain in the dependency set
 type Chain struct {
-	RPC     string
-	Client  *ethclient.Client
-	ChainId *big.Int
+	RPC            string
+	Client         *ethclient.Client
+	ChainId        *big.Int
+	timestampCache map[uint64]*big.Int
 }
 
 // Any contract, knows how to fetch events and decode them
@@ -113,11 +107,19 @@ func (c *Chain) SubscribeLogsNotification(address common.Address, from *big.Int,
 }
 
 func (c *Chain) GetBlockTimestamp(blockNumber *big.Int) (timestamp *big.Int, err error) {
+	time, ok := c.timestampCache[blockNumber.Uint64()]
+
+	if ok {
+		return time, nil
+	}
+
 	header, err := c.Client.HeaderByNumber(context.Background(), blockNumber)
 
 	if err != nil {
 		return nil, err
 	}
+
+	c.timestampCache[blockNumber.Uint64()] = big.NewInt(int64(header.Time))
 
 	return big.NewInt(int64(header.Time)), nil
 }
@@ -181,6 +183,22 @@ func GetEventIdentifier(eventLog types.Log, chain *Chain) (id Identifier, err er
 
 	if err != nil {
 		return Identifier{}, err
+	}
+
+	return
+}
+
+func (a Aggregator) GetContracts() (inbox Contract, messenger Contract) {
+	inbox = Contract{
+		ABI:     CrossL2InboxABI,
+		Address: common.HexToAddress("0x4200000000000000000000000000000000000022"),
+		Chain:   &a.Receiver,
+	}
+
+	messenger = Contract{
+		ABI:     L2ToL2CrossDomainMessengerABI,
+		Address: common.HexToAddress("0x4200000000000000000000000000000000000023"),
+		Chain:   &a.Sender,
 	}
 
 	return

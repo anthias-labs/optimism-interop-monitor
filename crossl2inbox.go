@@ -37,7 +37,3 @@ func coerceToIdentifier(value interface{}) (Identifier, error) {
 		ChainId:     v.ChainId,
 	}, nil
 }
-
-func (c Contract) FetchExecutingMessages() {
-
-}
