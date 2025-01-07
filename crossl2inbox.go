@@ -31,9 +31,9 @@ func coerceToIdentifier(value interface{}) (Identifier, error) {
 	// Map fields from the anonymous struct to the Identifier struct
 	return Identifier{
 		Origin:      v.Origin,
-		BlockNumber: v.BlockNumber,
-		LogIndex:    v.LogIndex,
-		Timestamp:   v.Timestamp,
-		ChainId:     v.ChainId,
+		BlockNumber: v.BlockNumber.Uint64(),
+		LogIndex:    v.LogIndex.Uint64(),
+		Timestamp:   v.Timestamp.Uint64(),
+		ChainId:     v.ChainId.Uint64(),
 	}, nil
 }

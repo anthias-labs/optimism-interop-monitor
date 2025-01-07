@@ -13,7 +13,7 @@ import (
 )
 
 // will be exposed via config later on
-var FETCH_SLEEP_TIME = 5
+var FETCH_SLEEP_TIME = 1
 
 // Represents either the sender chain, or any chain in the dependency set
 type Chain struct {
@@ -32,10 +32,10 @@ type Contract struct {
 
 type Identifier struct {
 	Origin      common.Address
-	BlockNumber *big.Int
-	LogIndex    *big.Int
-	Timestamp   *big.Int
-	ChainId     *big.Int
+	BlockNumber uint64
+	LogIndex    uint64
+	Timestamp   uint64
+	ChainId     uint64
 }
 
 type ContractPair struct {
@@ -61,14 +61,20 @@ func FetcherInit() (err error) {
 
 func NewChain(RPC string) (c *Chain, err error) {
 	client, err := ethclient.Dial(RPC)
+	if err != nil {
+		return nil, err
+	}
 
+	chainId, err := client.ChainID(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
 	c = &Chain{
-		RPC:    RPC,
-		Client: client,
+		RPC:            RPC,
+		Client:         client,
+		ChainId:        chainId,
+		timestampCache: make(map[uint64]*big.Int),
 	}
 
 	return
@@ -129,6 +135,12 @@ func (c *Chain) GetBlockTimestamp(blockNumber *big.Int) (timestamp *big.Int, err
 	return big.NewInt(int64(header.Time)), nil
 }
 
+func (c *Chain) GetCurrentBlockNumber() (blockNum *big.Int, err error) {
+	b, err := c.Client.BlockNumber(context.Background())
+
+	return big.NewInt(int64(b)), err
+}
+
 func (c Contract) FetchLogs(from *big.Int) (logs []types.Log, err error) {
 	logs, err = c.Chain.FetchLogs(c.Address, from)
 	return
@@ -179,16 +191,18 @@ func (c Contract) ParseEventToDic(eventLog types.Log) (eventName string, logData
 	return event.Name, logData, nil
 }
 
-func GetEventIdentifier(eventLog types.Log, chain *Chain) (id Identifier, err error) {
-	id.BlockNumber = big.NewInt(int64(eventLog.BlockNumber))
-	id.ChainId = chain.ChainId
-	id.LogIndex = big.NewInt(int64(eventLog.Index))
+func (chain *Chain) GetEventIdentifier(eventLog types.Log) (id Identifier, err error) {
+	id.BlockNumber = eventLog.BlockNumber
+	id.ChainId = chain.ChainId.Uint64()
+	id.LogIndex = uint64(eventLog.Index)
 	id.Origin = eventLog.Address
-	id.Timestamp, err = chain.GetBlockTimestamp(big.NewInt(int64(eventLog.BlockNumber)))
+	ts, err := chain.GetBlockTimestamp(big.NewInt(int64(eventLog.BlockNumber)))
 
 	if err != nil {
 		return Identifier{}, err
 	}
+
+	id.Timestamp = ts.Uint64()
 
 	return
 }
@@ -216,12 +230,24 @@ func (cp ContractPair) FetchAggregateCycle() (agg Aggregator, errChan chan error
 
 	inbox, messenger := agg.inboxContract, agg.messengerContract
 
-	inboxChan := inbox.CreateFetchChannel(big.NewInt(0), errChan)
+	inboxCurrentBlock, err := cp.Receiver.GetCurrentBlockNumber()
+
 	if err != nil {
 		return agg, nil, err
 	}
 
-	messengerChan := messenger.CreateFetchChannel(big.NewInt(0), errChan)
+	messengerCurrentBlock, err := cp.Sender.GetCurrentBlockNumber()
+
+	if err != nil {
+		return agg, nil, err
+	}
+
+	inboxChan := inbox.CreateFetchChannel(inboxCurrentBlock, errChan)
+	if err != nil {
+		return agg, nil, err
+	}
+
+	messengerChan := messenger.CreateFetchChannel(messengerCurrentBlock, errChan)
 	if err != nil {
 		return agg, nil, err
 	}
