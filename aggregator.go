@@ -51,6 +51,12 @@ func (agg *Aggregator) AddInboxMessage(msg *types.Log) (err error) {
 
 	// check if message is in messenger outbox
 	messageLog, ok := agg.messenger[senderId]
+	bs := agg.GetBlockStats(senderId.BlockNumber)
+
+	bs.MessageCount += 1
+	bs.ReceivedMessages += 1
+
+	agg.BlockStats[senderId.BlockNumber] = *bs
 
 	if ok {
 		agg.AddMessagePair(messageLog, msg)
@@ -58,13 +64,6 @@ func (agg *Aggregator) AddInboxMessage(msg *types.Log) (err error) {
 	} else {
 		agg.inbox[senderId] = msg
 	}
-
-	bs := agg.GetBlockStats(senderId.BlockNumber)
-
-	bs.MessageCount += 1
-	bs.ReceivedMessages += 1
-
-	agg.BlockStats[senderId.BlockNumber] = *bs
 
 	log.Printf("inbox: %s %v", name, data)
 	return
@@ -84,6 +83,12 @@ func (agg *Aggregator) AddMessengerMessage(msg *types.Log) (err error) {
 
 	// check if message is in receiver inbox
 	messageLog, ok := agg.inbox[id]
+	bs := agg.GetBlockStats(msg.BlockNumber)
+
+	bs.MessageCount += 1
+	bs.SentMesssages += 1
+
+	agg.BlockStats[msg.BlockNumber] = *bs
 
 	if ok {
 		agg.AddMessagePair(msg, messageLog)
@@ -91,13 +96,6 @@ func (agg *Aggregator) AddMessengerMessage(msg *types.Log) (err error) {
 	} else {
 		agg.messenger[id] = msg
 	}
-
-	bs := agg.GetBlockStats(msg.BlockNumber)
-
-	bs.MessageCount += 1
-	bs.SentMesssages += 1
-
-	agg.BlockStats[msg.BlockNumber] = *bs
 
 	log.Printf("messenger: %s %v %v", name, data, id)
 	log.Printf("map currently: %v", agg.inbox[id])
@@ -135,7 +133,8 @@ func (agg Aggregator) AddMessagePair(senderMsg, receiverMsg *types.Log) (err err
 	latency := big.NewInt(0)
 	latency.Sub(receiverTimestamp, senderTimestamp)
 	bs.TotalLatency.Add(bs.TotalLatency, latency)
+	agg.BlockStats[senderMsg.BlockNumber] = *bs
 
-	log.Printf("addMessagePair: found pair, stats: %v", agg.BlockStats)
+	log.Printf("addMessagePair: found pair, timestamps %d %d, stats: %v", senderTimestamp.Uint64(), receiverTimestamp.Uint64(), agg.BlockStats)
 	return
 }
