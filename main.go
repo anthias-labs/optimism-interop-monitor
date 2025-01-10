@@ -11,9 +11,9 @@ func must(err error) {
 	}
 }
 
-// This is an example of the fetching system. This will be replaced with the actual
+// This is an example of the aggregation system. This will be replaced with the actual
 // CLI on a later milestone
-// Most of the logic can be found in the fetcher.go file
+// Most of the logic can be found in the aggregator.go and fetcher.go files
 func main() {
 	err := FetcherInit()
 	must(err)
@@ -28,6 +28,9 @@ func main() {
 
 	cp := ContractPair{Sender: ch2, Receiver: ch1}
 
+	// This function creates the aggregator, which is the first return value
+	// As debug logging is currently enabled in the aggregator and we don't do anything with
+	// the information, we ignore the return value for now
 	_, errChan, err := cp.FetchAggregateCycle()
 	must(err)
 
