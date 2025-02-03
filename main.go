@@ -1,7 +1,9 @@
 package main
 
 import (
+	"flag"
 	"log"
+	"os"
 )
 
 // crashes in case of crucial errors
@@ -15,24 +17,35 @@ func must(err error) {
 // CLI on a later milestone
 // Most of the logic can be found in the aggregator.go and fetcher.go files
 func main() {
-	err := FetcherInit()
+	configFile := flag.String("config", "config.json", "path to config file")
+	flag.Parse()
+
+	data, err := os.ReadFile(*configFile)
+	must(err)
+
+	config, err := parseConfig(data)
 	must(err)
 
 	// This assumes an instance of Supersim is running
 	// More info: https://github.com/ethereum-optimism/Supersim
-	ch1, err := NewChain("http://localhost:9545")
+	senderChain, err := NewChain(config.SenderChain)
 	must(err)
 
-	ch2, err := NewChain("http://localhost:9546")
+	receiverChain, err := NewChain(config.ReceiverChain)
 	must(err)
 
-	cp := ContractPair{Sender: ch2, Receiver: ch1}
+	cp := ContractPair{Sender: senderChain, Receiver: receiverChain}
+
+	err = FetcherInit(config)
+	must(err)
 
 	// This function creates the aggregator, which is the first return value
 	// As debug logging is currently enabled in the aggregator and we don't do anything with
 	// the information, we ignore the return value for now
-	_, errChan, err := cp.FetchAggregateCycle()
+	agg, errChan, err := cp.FetchAggregateCycle(config)
 	must(err)
+
+	go StartApi(config, &agg)
 
 	for {
 		select {

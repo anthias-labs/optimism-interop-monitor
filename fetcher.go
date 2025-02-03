@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"math/big"
 	"time"
 
@@ -12,8 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// will be exposed via config later on
-var FETCH_SLEEP_TIME = 1
+var FETCH_SLEEP_TIME int
 
 // Represents either the sender chain, or any chain in the dependency set
 type Chain struct {
@@ -43,7 +44,9 @@ type ContractPair struct {
 	Receiver *Chain
 }
 
-func FetcherInit() (err error) {
+func FetcherInit(config *Config) (err error) {
+	FETCH_SLEEP_TIME = config.FetchTime
+
 	CrossL2InboxABI, err = crossL2InboxMetaData.GetAbi()
 
 	if err != nil {
@@ -223,8 +226,8 @@ func (cp ContractPair) GetContracts() (inbox Contract, messenger Contract) {
 	return
 }
 
-func (cp ContractPair) FetchAggregateCycle() (agg Aggregator, errChan chan error, err error) {
-	agg = MakeAggregator(cp.Sender, cp.Receiver)
+func (cp ContractPair) FetchAggregateCycle(config *Config) (agg Aggregator, errChan chan error, err error) {
+	agg = MakeAggregator(cp.Sender, cp.Receiver, config)
 
 	errChan = make(chan error)
 
@@ -270,6 +273,32 @@ func (cp ContractPair) FetchAggregateCycle() (agg Aggregator, errChan chan error
 			}
 		}
 
+	}()
+
+	// Aggregate blocks and send alerts
+	go func() {
+		for {
+			stats := agg.AggregateLatestBlocks(config.AggregateBlockAmount)
+			log.Println("Checking stats... \n\n", stats)
+
+			// detect alerts
+			if config.AlertAvgLatencyMin != 0 && stats.AvgLatency > config.AlertAvgLatencyMin {
+				SendAlert("Average Latency", fmt.Sprintf("%f", stats.AvgLatency), stats, config)
+			}
+
+			if config.AlertMissingReceptionMin != 0 && stats.MissingReception > config.AlertMissingReceptionMin {
+				SendAlert("Missing Reception", fmt.Sprintf("%d", stats.MissingReception), stats, config)
+			}
+
+			if config.AlertMissingRelayMin != 0 && stats.MissingRelay > config.AlertMissingRelayMin {
+				SendAlert("Missing Relay", fmt.Sprintf("%d", stats.MissingRelay), stats, config)
+			}
+
+			latest := *agg.LatestBlock
+			for *agg.LatestBlock < latest+config.AggregateBlockAmount {
+				time.Sleep(time.Duration(config.FetchTime))
+			}
+		}
 	}()
 
 	return
