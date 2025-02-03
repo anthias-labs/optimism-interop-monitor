@@ -24,7 +24,7 @@ To run, the CLI binary must be available in the path, or present in the current 
 
 To start the system, run:
 ```bash
-./optimism-interop-monitoring [-config <path>]
+optimism-interop-monitoring [-config <path>]
 ```
 
 The optional `-config` flag specifies a different path for the config file (the default is `"config.json"`)
