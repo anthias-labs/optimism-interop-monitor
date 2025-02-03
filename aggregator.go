@@ -15,13 +15,13 @@ type BlockStat struct {
 }
 
 type DetailedIntervalStat struct {
-	MessageCount     uint64
-	TotalLatency     *big.Int
-	AvgLatency       float64
-	SentMesssages    uint64
-	ReceivedMessages uint64
-	MissingRelay     uint64
-	MissingReception uint64
+	MessageCount     uint64   `json:"messageCount"`
+	TotalLatency     *big.Int `json:"totalLatency"`
+	AvgLatency       float64  `json:"avgLatency"`
+	SentMesssages    uint64   `json:"sentMessages"`
+	ReceivedMessages uint64   `json:"receivedMessages"`
+	MissingRelay     uint64   `json:"missingRelay"`
+	MissingReception uint64   `json:"missingReception"`
 }
 
 // Aggregates stats for a single sender -> receiver pair
@@ -119,7 +119,7 @@ func (agg *Aggregator) AddMessengerMessage(msg *types.Log) (err error) {
 		agg.messenger[id] = msg
 	}
 
-	log.Printf("messenger: %s %v %v", name, data, id)
+	log.Printf("messenger: %s %v", name, data)
 	return
 }
 
@@ -157,7 +157,7 @@ func (agg *Aggregator) AddMessagePair(senderMsg, receiverMsg *types.Log) (err er
 	bs.MessageCount += 1
 	agg.BlockStats[senderMsg.BlockNumber] = *bs
 
-	log.Printf("addMessagePair: found pair, timestamps %d %d, stats: %v, latest: %d", senderTimestamp.Uint64(), receiverTimestamp.Uint64(), agg.BlockStats, agg.LatestBlock)
+	log.Printf("addMessagePair: found pair, timestamps %d %d", senderTimestamp.Uint64(), receiverTimestamp.Uint64())
 	return
 }
 

@@ -93,7 +93,7 @@ func customWebhookMessage(message string, config *Config) error {
 	baseURL := config.CustomWebhookURL
 
 	var body struct {
-		Content string `json:"content"`
+		Content string `json:"text"`
 	}
 
 	body.Content = message

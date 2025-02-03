@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/big"
 	"time"
 
@@ -279,7 +278,6 @@ func (cp ContractPair) FetchAggregateCycle(config *Config) (agg Aggregator, errC
 	go func() {
 		for {
 			stats := agg.AggregateLatestBlocks(config.AggregateBlockAmount)
-			log.Println("Checking stats... \n\n", stats)
 
 			// detect alerts
 			if config.AlertAvgLatencyMin != 0 && stats.AvgLatency > config.AlertAvgLatencyMin {
@@ -293,6 +291,8 @@ func (cp ContractPair) FetchAggregateCycle(config *Config) (agg Aggregator, errC
 			if config.AlertMissingRelayMin != 0 && stats.MissingRelay > config.AlertMissingRelayMin {
 				SendAlert("Missing Relay", fmt.Sprintf("%d", stats.MissingRelay), stats, config)
 			}
+
+			// Custom alerts can be added here
 
 			latest := *agg.LatestBlock
 			for *agg.LatestBlock < latest+config.AggregateBlockAmount {
